@@ -21,7 +21,7 @@ Item {
        "Qfield Plugin Update": "https://github.com/woupss/qfield-plugin-update/archive/refs/heads/main.zip",
 
 
-        "Qfield Plugin Reloader": "https://github.com/gacarillor/qfield-plugin-reloader/archive/refs/heads/main.zip",
+     //   "Qfield Plugin Reloader": "https://github.com/gacarillor/qfield-plugin-reloader/archive/refs/heads/main.zip",
 
         "OSRM Routing": "https://github.com/opengisch/qfield-osrm/archive/refs/heads/main.zip",
 
