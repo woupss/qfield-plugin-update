@@ -18,7 +18,7 @@ Item {
 
         "UpdatefromURL": "https://github.com/woupss/Qfield-Update-qgz-Project/archive/refs/heads/main.zip",
 
-       "Qfield Plugin Updateq": "https://github.com/woupss/Qfield-filter-plugin/archive/refs/heads/main.zip",
+       "Qfield Plugin Update": "https://github.com/woupss/qfield-plugin-update/archive/refs/heads/main.zip",
 
 
         "Qfield Plugin Reloader": "https://github.com/gacarillor/qfield-plugin-reloader/archive/refs/heads/main.zip",
