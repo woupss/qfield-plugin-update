@@ -1,0 +1,7 @@
+[general]
+name=QField Plugin Update
+description=Update a chosen QField (app) plugin in one click.
+author=woups
+icon=icon.svg
+version=0.1
+homepage=https://github.com/woupss/qfield-plugin-update
