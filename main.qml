@@ -15,142 +15,195 @@ Item {
     // =========================================================================
     property var pluginSources: {
         "Filter": "https://github.com/woupss/Qfield-filter-plugin/archive/refs/heads/main.zip",
-
         "UpdatefromURL": "https://github.com/woupss/Qfield-Update-qgz-Project/archive/refs/heads/main.zip",
-
-       "Qfield Plugin Update": "https://github.com/woupss/qfield-plugin-update/archive/refs/heads/main.zip",
-
-
-     //   "Qfield Plugin Reloader":// "https://github.com/gacarillor/qfield-plugin-reloader/archive/refs/heads/main.zip",
-
+        
+        // NAME DETECTION FOR AUTO-UPDATE
+        "Qfield Plugin Update": "https://github.com/woupss/qfield-plugin-update/archive/refs/heads/main.zip",
+        
         "OSRM Routing": "https://github.com/opengisch/qfield-osrm/archive/refs/heads/main.zip",
-
-         "OpenStreetMap Nominatim Search": "https://github.com/opengisch/qfield-nominatim-locator/archive/refs/heads/main.zip",
-
+        "OpenStreetMap Nominatim Search": "https://github.com/opengisch/qfield-nominatim-locator/archive/refs/heads/main.zip",
         "Delete_Via_Dropdown": "https://github.com/TyHol/DeleteViaDropdown/archive/refs/heads/main.zip",
-
         "Layer loader": "https://github.com/mbernasocchi/qfield-layer-loader/archive/refs/heads/main.zip",
-
-        "Mon Plugin Privé": "https://monsite.com/files/mon_plugin_v2.zip"
+        "My Private Plugin": "https://monsite.com/files/mon_plugin_v2.zip",
+        
+        // "Qfield Plugin Reloader": "https://github.com/gacarillor/qfield-plugin-reloader/qfield-plugin-reloader/archive/refs/heads/main.zip"
     }
 
     // =========================================================================
-    // 2. ETAT
+    // 2. STATE
     // =========================================================================
     property string targetUrl: ""
-    property string targetUuid: ""
+    property string targetUuid: "" 
     property string targetName: "" 
     property string targetFolderDisplay: "..."
     property bool isFinished: false
-    property bool isWorking: false // Pour gérer l'animation de la barre
-    
-    // Propriété pour figer le nom du plugin pendant le traitement
+    property bool isWorking: false 
     property string savedComboText: ""
+    property bool isSelfUpdate: false
 
     // =========================================================================
-    // 3. LOGIQUE D'ANALYSE
+    // 3. ANALYSIS LOGIC
     // =========================================================================
+    
+    function extractNameFromUrl(url) {
+        if (!url) return "";
+        if (url.indexOf("/archive/") !== -1) {
+            var parts = url.split("/");
+            for (var k = 0; k < parts.length; k++) {
+                if (parts[k] === "archive" && k > 0) {
+                    return parts[k-1] + "-main"; // The NEW folder
+                }
+            }
+        }
+        return "";
+    }
+
+    function findUrlCaseInsensitive(name) {
+        var keys = Object.keys(pluginSources);
+        var searchName = name.toLowerCase().trim();
+        for (var i = 0; i < keys.length; i++) {
+            if (keys[i].toLowerCase().trim() === searchName) {
+                return pluginSources[keys[i]];
+            }
+        }
+        return "";
+    }
+
     function analyzeUrlAndSelection() {
         var customUrl = urlField.text.trim();
+        rootItem.isSelfUpdate = false; 
         
         if (customUrl !== "") {
-            // --- CAS 1 : URL PERSONNALISÉE ---
-            // Si une URL est saisie, on désélectionne le combo (visuellement)
+            // --- CASE 1: CUSTOM URL ---
             if (pluginCombo.currentIndex !== -1) {
                 pluginCombo.currentIndex = -1;
                 rootItem.savedComboText = ""; 
             }
 
-            var repoName = "Inconnu";
-            var detected = false;
-
-            if (customUrl.indexOf("/archive/") !== -1) {
-                var parts = customUrl.split("/");
-                for (var k = 0; k < parts.length; k++) {
-                    if (parts[k] === "archive" && k > 0) {
-                        repoName = parts[k-1];
-                        detected = true;
-                        break;
-                    }
-                }
-            }
-
-            if (detected) {
-                targetFolderDisplay = ".../plugins/" + repoName + "-main";
+            var repoName = extractNameFromUrl(customUrl);
+            if (repoName !== "") {
+                targetFolderDisplay = ".../plugins/" + repoName;
                 if (!rootItem.isFinished) rootItem.targetName = repoName;
             } else {
-                targetFolderDisplay = ".../plugins/[Nom du ZIP]";
-                if (!rootItem.isFinished) rootItem.targetName = "Personnalisé";
+                targetFolderDisplay = ".../plugins/[ZIP Name]";
+                if (!rootItem.isFinished) rootItem.targetName = "Custom";
             }
 
         } else {
-            // --- CAS 2 : SÉLECTION COMBOBOX ---
+            // --- CASE 2: COMBOBOX SELECTION ---
             if (pluginCombo.currentIndex === -1) {
                 targetFolderDisplay = "...";
+                // Reset if nothing is selected
+                rootItem.targetName = "";
+                rootItem.targetUuid = "";
                 return;
             }
 
             var selectedName = pluginCombo.currentText;
+            
+            // AUTO-UPDATE DETECTION
+            if (selectedName.toLowerCase().indexOf("plugin update") !== -1) {
+                rootItem.isSelfUpdate = true;
+            }
+
+            var knownUrl = findUrlCaseInsensitive(selectedName);
+            var prettyName = extractNameFromUrl(knownUrl);
+
+            // Search for the currently installed UUID
             var foundUuid = "";
             var plugins = pluginManager.availableAppPlugins;
-            
             for (var i = 0; i < plugins.length; i++) {
                 if (plugins[i].name === selectedName) {
                     foundUuid = plugins[i].uuid;
                     break;
                 }
             }
-            
-            if (foundUuid !== "") {
-                targetFolderDisplay = ".../plugins/" + foundUuid;
+
+            if (prettyName !== "") {
+                targetFolderDisplay = ".../plugins/" + prettyName;
+                rootItem.targetName = prettyName;
             } else {
-                targetFolderDisplay = ".../plugins/[Inconnu]";
+                if (foundUuid !== "") {
+                    targetFolderDisplay = ".../plugins/" + foundUuid;
+                } else {
+                    targetFolderDisplay = ".../plugins/[Unknown]";
+                }
             }
         }
     }
 
     // =========================================================================
-    // 4. LOGIQUE MÉTIER
+    // 4. BUSINESS LOGIC
     // =========================================================================
 
     Connections {
         target: pluginManager
 
         function onInstallProgress(progress) { 
-            // Si on reçoit une progression, on n'est plus en "indéterminé"
             progressBar.indeterminate = false;
             progressBar.value = progress;
         }
 
         function onInstallEnded(uuid, error) {
-            rootItem.isWorking = false; // Arrêt de l'animation
+            rootItem.isWorking = false; 
             
             if (error && error !== "") {
-                // Remplacement du Toast par le texte rouge
-                statusText.text = "ERREUR : " + error;
+                statusText.text = "ERROR: " + error;
                 statusText.color = "red";
                 progressBar.value = 0;
             } else {
-                // SUCCÈS
                 if (pluginManager.pluginModel) pluginManager.pluginModel.refresh(false);
                 
                 rootItem.isFinished = true;
                 progressBar.value = 1;
                 progressBar.indeterminate = false;
                 
-                statusText.text = "Opération terminée.";
-                statusText.color = "green";
+                if (rootItem.isSelfUpdate) {
+                    statusText.text = "Update installed.\nCleaning up old version in 3 seconds...";
+                    statusText.color = "#d35400"; // Orange
+                } else {
+                    statusText.text = "Update completed successfully.";
+                    statusText.color = "green";
+                }
                 
+                // Auto close dialogue
                 closeTimer.start();
             }
         }
     }
 
+    // Timer to close the dialog
     Timer {
         id: closeTimer
         interval: 3000
         repeat: false
-        onTriggered: updateDialog.close()
+        onTriggered: {
+            updateDialog.close();
+        }
+    }
+
+    // --- THE KILL SWITCH (DANGER) ---
+    // Triggered AFTER dialog closure to delete the old folder
+    Timer {
+        id: finalSelfDestructTimer
+        interval: 500 // 0.5 sec after visual closure
+        repeat: false
+        onTriggered: {
+            console.log("AUTO-UPDATE: Starting final destruction of: " + rootItem.targetUuid);
+            
+            try {
+                // 1. Disable cleanly
+                if (pluginManager.isAppPluginEnabled(rootItem.targetUuid)) {
+                    pluginManager.disableAppPlugin(rootItem.targetUuid);
+                }
+                // 2. DELETE INITIAL FOLDER (old UUID)
+                pluginManager.uninstall(rootItem.targetUuid);
+                
+                console.log("AUTO-UPDATE: Old version deleted.");
+            } catch (e) {
+                console.log("AUTO-UPDATE Error: " + e);
+            }
+        }
     }
 
     Timer {
@@ -159,8 +212,8 @@ Item {
         repeat: false
         onTriggered: {
             if (rootItem.targetUrl !== "") {
-                statusText.text = "Téléchargement en cours...";
-                // On laisse la barre indéterminée jusqu'au premier retour de progression
+                statusText.text = "Downloading new version...";
+                // Installs the "...-main" folder next to the current one
                 pluginManager.installFromUrl(rootItem.targetUrl);
             }
         }
@@ -170,80 +223,78 @@ Item {
         var customUrl = urlField.text.trim();
         var selectedName = pluginCombo.currentText;
 
-        // Reset visuel erreur
         statusText.color = "black";
 
-        // 1. DÉTERMINATION
+        // VERIFICATIONS
+        if (customUrl === "" && pluginCombo.currentIndex === -1) {
+             statusText.text = "⚠️ Please select a plugin.";
+             statusText.color = "red";
+             return;
+        }
+
+        // SETUP URL
         if (customUrl !== "") {
             rootItem.targetUrl = customUrl;
             rootItem.savedComboText = ""; 
         } else {
-            if (pluginCombo.currentIndex === -1) {
-                // Remplacement du Toast erreur
-                statusText.text = "⚠️ Veuillez sélectionner un plugin ou saisir une URL.";
-                statusText.color = "red";
-                return;
-            }
-
             rootItem.savedComboText = selectedName;
             rootItem.targetName = selectedName;
             
-            if (pluginSources[selectedName]) {
-                rootItem.targetUrl = pluginSources[selectedName];
+            var foundUrl = findUrlCaseInsensitive(selectedName);
+            if (foundUrl !== "") {
+                rootItem.targetUrl = foundUrl;
             } else {
-                // Remplacement du Toast erreur
-                statusText.text = "⚠️ Erreur : Pas d'URL connue pour ce plugin.";
+                statusText.text = "⚠️ Error: Unknown URL.";
                 statusText.color = "red";
                 return;
             }
         }
 
-        // 2. INIT
-        platformUtilities.requestStoragePermission();
-        
-        rootItem.isWorking = true; // Active l'animation barre
-        rootItem.isFinished = false;
-        
-        statusText.text = "Traitement en cours..."; // Texte générique de début
-        statusText.color = "black";
-        
-        progressBar.value = 0;
-        progressBar.indeterminate = true; // Barre qui bouge (Chenillard)
-
-        // 3. IDENTIFICATION CIBLE
+        // IDENTIFY OLD VERSION
         rootItem.targetUuid = "";
-        if (pluginCombo.currentIndex !== -1) {
-            var plugins = pluginManager.availableAppPlugins;
+        var searchName = (customUrl === "" && pluginCombo.currentIndex !== -1) ? pluginCombo.currentText : "";
+        var plugins = pluginManager.availableAppPlugins;
+        if (searchName !== "") {
             for (var i = 0; i < plugins.length; i++) {
-                if (plugins[i].name === pluginCombo.currentText) {
+                if (plugins[i].name === searchName) {
                     rootItem.targetUuid = plugins[i].uuid;
                     break;
                 }
             }
         }
 
-        // 4. NETTOYAGE
-        if (rootItem.targetUuid !== "") {
-            statusText.text = "Nettoyage ancienne version...";
-            try {
-                if (pluginManager.isAppPluginEnabled(rootItem.targetUuid)) {
-                    pluginManager.disableAppPlugin(rootItem.targetUuid);
-                }
-            } catch (e) {}
+        // INIT UI
+        platformUtilities.requestStoragePermission();
+        rootItem.isWorking = true;
+        rootItem.isFinished = false;
+        statusText.text = "Initializing...";
+        progressBar.value = 0;
+        progressBar.indeterminate = true; 
 
-            try {
-                pluginManager.uninstall(rootItem.targetUuid);
-            } catch (e) {
-                console.log("Uninstall logic error: " + e);
+        // DELETE LOGIC
+        if (rootItem.targetUuid !== "") {
+            if (rootItem.isSelfUpdate) {
+                // AUTO-UPDATE CASE: DO NOT DELETE NOW
+                statusText.text = "Auto-Update Mode: Installing new version...";
+                console.log("AUTO-UPDATE: Deletion deferred to end of process.");
+            } 
+            else {
+                // NORMAL CASE: Delete first
+                statusText.text = "Deleting old version...";
+                try {
+                    if (pluginManager.isAppPluginEnabled(rootItem.targetUuid)) {
+                        pluginManager.disableAppPlugin(rootItem.targetUuid);
+                    }
+                    pluginManager.uninstall(rootItem.targetUuid);
+                } catch (e) {}
             }
         }
 
-        // 5. INSTALLATION
         transitionTimer.start();
     }
 
     // =========================================================================
-    // 5. INTERFACE GRAPHIQUE
+    // 5. GRAPHIC INTERFACE
     // =========================================================================
 
     Component.onCompleted: {
@@ -259,16 +310,17 @@ Item {
         onClicked: {
             if (pluginManager.pluginModel) pluginManager.pluginModel.refresh(false);
             
-            // RESET COMPLET A L'OUVERTURE
+            // RESET
             pluginCombo.currentIndex = -1;
             urlField.text = "";
             rootItem.savedComboText = ""; 
             rootItem.isFinished = false;
             rootItem.isWorking = false;
             rootItem.targetFolderDisplay = "...";
+            rootItem.isSelfUpdate = false;
             progressBar.value = 0;
             progressBar.indeterminate = false;
-            statusText.text = ""; // Pas de texte initial
+            statusText.text = "";
             statusText.color = "black";
             
             updateDialog.open();
@@ -279,180 +331,180 @@ Item {
         id: updateDialog
         parent: mainWindow.contentItem
         modal: true
-        width: Math.min(500, mainWindow.width * 0.95)
+        
+        // Remove default padding
+        padding: 0
+        topPadding: 0
+        bottomPadding: 0
+        leftPadding: 0
+        rightPadding: 0
+
+        width: Math.min(Math.max(300, mainLayout.implicitWidth + 40), mainWindow.width * 0.95)
+        height: mainLayout.implicitHeight + 20 
+        
         x: (mainWindow.width - width) / 2
         y: (mainWindow.height - height) / 2
         standardButtons: Dialog.NoButton
         
+        onClosed: {
+            if (rootItem.isFinished && rootItem.isSelfUpdate && rootItem.targetUuid !== "") {
+                finalSelfDestructTimer.start();
+            }
+        }
+        
         background: Rectangle { 
             color: "white"; radius: 8; border.width: 2; border.color: Theme.mainColor 
+            
+            // MouseArea to lose focus when clicking background
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    mainLayout.forceActiveFocus()
+                }
+            }
         }
 
         ColumnLayout {
+            id: mainLayout
             anchors.fill: parent
-            anchors.margins: 16
-            spacing: 12
+            
+            anchors.topMargin: 10
+            anchors.bottomMargin: 10
+            anchors.leftMargin: 20
+            anchors.rightMargin: 20
+            
+            spacing: 4 
 
             Label {
-                text: "Mise à jour Plugin"
+                text: "Plugin Update"
                 font.bold: true
                 font.pointSize: 16
                 Layout.alignment: Qt.AlignHCenter
             }
 
-            // --- ZONE 1 : LISTE ---
-            Label { 
-                text: "Sélectionner le plugin (Cible) :" 
-                font.bold: true; font.pixelSize: 12 
-            }
-            
-            ComboBox {
-                id: pluginCombo
+            // Deselection button via RowLayout
+            RowLayout {
                 Layout.fillWidth: true
-                textRole: "name"
-                model: pluginManager.availableAppPlugins
-                
-                // Affichage persistant du nom pendant le traitement
-                displayText: rootItem.savedComboText !== "" ? rootItem.savedComboText : (currentIndex === -1 ? "Sélectionnez un plugin" : currentText)
-                
-                onActivated: {
-                    urlField.text = "";
-                    rootItem.savedComboText = "";
-                    analyzeUrlAndSelection();
-                    statusText.text = ""; // Reset message erreur si on change
-                    statusText.color = "black";
-                }
-            }
+                Layout.topMargin: 8
+                spacing: 5
 
-            // --- ZONE 2 : URL PERSO ---
-            Label { 
-                text: "OU saisir une URL :" 
-                font.bold: true; font.pixelSize: 12 
-                Layout.topMargin: 5
-            }
+                ComboBox {
+                    id: pluginCombo
+                    Layout.fillWidth: true
+                    textRole: "name"
+                    model: pluginManager.availableAppPlugins
+                    displayText: rootItem.savedComboText !== "" ? rootItem.savedComboText : (currentIndex === -1 ? "Select a plugin" : currentText)
+                    onActivated: {
+                        urlField.text = "";
+                        rootItem.savedComboText = "";
+                        analyzeUrlAndSelection(); 
+                    }
+                }
 
-            TextField {
-                id: urlField
-                Layout.fillWidth: true
-                selectByMouse: true
-                
-                // On n'utilise pas le placeholderText standard pour contrôler la police
-                placeholderText: "" 
-                
-                // CUSTOM PLACEHOLDER (Petite police)
-                Label {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10 // Marge interne standard TextField
-                    anchors.verticalCenter: parent.verticalCenter
-                    // Visible si champ vide
-                    visible: parent.text === "" && !parent.activeFocus
-                    
-                    text: "https://github.com/user/repo/archive/refs/heads/main.zip"
-                    color: "#aaa"
-                    font.pixelSize: 10 // POLICE REDUITE POUR TOUT AFFICHER
-                    font.italic: true
-                    elide: Text.ElideRight
-                    width: parent.width - 20
-                }
-                
-                onTextChanged: {
-                    analyzeUrlAndSelection();
-                    statusText.text = ""; // Reset message erreur
-                    statusText.color = "black";
-                }
-                
-                background: Rectangle {
-                    color: "#f9f9f9"
-                    border.color: parent.activeFocus ? Theme.mainColor : "#ccc"
-                    radius: 4
-                }
-            }
-
-            // --- ZONE 3 : CHEMIN ---
-            Label { 
-                text: "Destination prévue :" 
-                font.bold: true; font.pixelSize: 12
-                Layout.topMargin: 5
-            }
-            
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 40
-                color: "#e0e0e0"
-                radius: 4
-                border.color: "#999"
-                
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    Text { text: "📂"; font.pixelSize: 14 }
-                    Text {
-                        text: rootItem.targetFolderDisplay
-                        font.family: "Courier"; font.pixelSize: 11
-                        color: "#333"; elide: Text.ElideMiddle
-                        Layout.fillWidth: true
+                Button {
+                    text: "✖"
+                    visible: pluginCombo.currentIndex !== -1
+                    Layout.preferredWidth: 30
+                    Layout.preferredHeight: 30
+                    background: Rectangle { 
+                        color: "#eee" 
+                        radius: 4 
+                        border.color: "#ccc"
+                    }
+                    onClicked: {
+                        pluginCombo.currentIndex = -1;
+                        rootItem.savedComboText = "";
+                        analyzeUrlAndSelection(); 
                     }
                 }
             }
 
-            // --- ZONE 4 : BARRE DE CHARGEMENT + STATUS ---
-            
-            // Barre de chargement (Progress ou Indeterminate)
+            Label { text: "OR enter a URL:" ; font.bold: true; font.pixelSize: 12 ; Layout.topMargin: 12 }
+            TextField {
+                id: urlField
+                Layout.fillWidth: true
+                Layout.preferredHeight: 40 
+                verticalAlignment: Text.AlignVCenter
+                
+                selectByMouse: true
+                placeholderText: "" 
+                Label {
+                    anchors.left: parent.left; 
+                    anchors.leftMargin: 5;
+                    anchors.verticalCenter: parent.verticalCenter
+                    
+                    // Visible only if empty AND no focus
+                    visible: !parent.activeFocus && parent.text === ""
+                    
+                    text: "https://github.com/user/repo/archive/refs/heads/main.zip"
+                    color: "#aaa"; font.pixelSize: 10; font.italic: true
+                }
+                onTextChanged: { analyzeUrlAndSelection(); statusText.text = ""; statusText.color = "black"; }
+                
+                background: Rectangle { 
+                    color: "white" 
+                    border.color: parent.activeFocus ? Theme.mainColor : "#ccc"
+                    radius: 4 
+                }
+            }
+
+            Label { text: "Target destination:" ; font.bold: true; font.pixelSize: 12 ; Layout.topMargin: 12 }
+            Rectangle {
+                Layout.fillWidth: true; Layout.preferredHeight: 40; color: "#e0e0e0"; radius: 4; border.color: "#999"
+                RowLayout {
+                    anchors.fill: parent; anchors.margins: 4 
+                    Text { text: "📂"; font.pixelSize: 14 }
+                    Text {
+                        text: rootItem.targetFolderDisplay
+                        font.family: "Courier"; font.pixelSize: 11; color: "#333"; elide: Text.ElideMiddle; Layout.fillWidth: true
+                    }
+                }
+            }
+
             ProgressBar { 
                 id: progressBar
-                Layout.fillWidth: true
-                Layout.topMargin: 10
-                
+                Layout.fillWidth: true; Layout.topMargin: 10
                 value: 0
-                // Indéterminée (va-et-vient) si on travaille mais pas encore de % reçu
                 indeterminate: rootItem.isWorking && value === 0
-                
-                // Visible si on travaille ou si on a fini (100%)
                 visible: rootItem.isWorking || rootItem.isFinished
             }
 
-            // Texte de Status (Erreur ou Info)
             Text {
                 id: statusText
                 Layout.fillWidth: true
                 text: "" 
-                horizontalAlignment: Text.AlignHCenter
-                font.italic: true
-                wrapMode: Text.Wrap // Pour les longs messages d'erreur
-                color: "#555" // Changera en rouge si erreur
+                visible: text !== ""
+                horizontalAlignment: Text.AlignHCenter; font.italic: true; wrapMode: Text.Wrap; color: "#555"
             }
 
-            // --- BOUTON DYNAMIQUE ---
-            Item {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 50
+            // --- ADAPTIVE AND DYNAMIC BUTTON ---
+            Button {
+                Layout.alignment: Qt.AlignHCenter 
+                Layout.fillWidth: false 
                 Layout.topMargin: 10
                 
-                Button {
-                    anchors.centerIn: parent
-                    width: parent.width * 0.9
-                    height: 45
-                    
-                    enabled: !rootItem.isFinished && !rootItem.isWorking
-                    
-                    background: Rectangle { 
-                        color: Theme.mainColor
-                        radius: 6 
-                    }
-                    
-                    contentItem: Text { 
-                        text: rootItem.isFinished ? "Plugin " + rootItem.targetName + " mis à jour" : "METTRE À JOUR"
+                leftPadding: 20
+                rightPadding: 20
+                topPadding: 10
+                bottomPadding: 10
+
+                enabled: !rootItem.isFinished && !rootItem.isWorking
+                background: Rectangle { color: Theme.mainColor; radius: 6 }
+                contentItem: Text { 
+                    text: {
+                        if (rootItem.isFinished) {
+                            if (urlField.text.trim() !== "") return "Installation successful";
+                            return "Update successful";
+                        }
                         
-                        color: "white"
-                        font.bold: true
-                        font.pixelSize: 14
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter 
-                        elide: Text.ElideRight
+                        if (urlField.text.trim() !== "") return "INSTALL";
+                        
+                        return "UPDATE";
                     }
-                    
-                    onClicked: startUpdateProcess()
+                    color: "white"; font.bold: true; font.pixelSize: 14
+                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter 
                 }
+                onClicked: startUpdateProcess()
             }
         }
     }
