@@ -1,7 +1,7 @@
 [general]
 name=QField Plugin Update
 description=Update a chosen QField plugin or install a plugin from url.
-author=woups
+author=woupss
 icon=icon.svg
 version=0.3
 homepage=https://github.com/woupss/qfield-plugin-update
