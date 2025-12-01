@@ -7,4 +7,5 @@ Also, you can install a new plugin by copy/past his last release link
 There is a limitation, if you have copy/paste the folder of the plugin manually, the plugin can't delete it and you have to delete it manually (Android restriction).
 
 It is a plugin in development and any help is welcome.
+
 ![Screenshot_2025-12-01-14-22-05-704_ch opengis qfield_dev](https://github.com/user-attachments/assets/f7fed054-3869-4bd9-9a23-8d33bc87dd9b)
