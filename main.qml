@@ -423,11 +423,9 @@ Item {
         modal: true
         padding: 0; topPadding: 0; bottomPadding: 0; leftPadding: 0; rightPadding: 0
 
-        width: Math.min(Math.max(300, mainLayout.implicitWidth + 40), mainWindow.width * 0.95)
+        width: Math.min(Math.max(350, mainLayout.implicitWidth + 40), mainWindow.width * 0.90)
         height: mainLayout.implicitHeight + 20 
-        
-        x: (mainWindow.width - width) / 2
-        y: (mainWindow.height - height) / 2
+        anchors.centerIn: parent
         standardButtons: Dialog.NoButton
         
         onClosed: {} 
