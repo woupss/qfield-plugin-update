@@ -16,13 +16,11 @@ Item {
     property string currentLang: "en"
 
     function detectLanguage() {
-        // Récupère le code langue (ex: "fr_FR" -> "fr")
         var loc = Qt.locale().name.substring(0, 2);
         if (loc === "fr") rootItem.currentLang = "fr";
         else rootItem.currentLang = "en";
     }
 
-    // Dictionnaire des textes (Mis à jour selon votre demande)
     property var translations: {
         "title": { "en": "PLUGIN UPDATER", "fr": "MISE À JOUR DES PLUGINS" },
         "select_placeholder": { "en": "Select a plugin", "fr": "Sélectionner un plugin" },
@@ -43,6 +41,7 @@ Item {
         "check_release": { "en": "Checking releases...", "fr": "Vérification des versions..." },
         "json_error": { "en": "JSON Error.", "fr": "Erreur JSON." },
         "api_error": { "en": "API Error", "fr": "Erreur API" },
+        "ratelimit_error": { "en": "⚠️ GitHub Rate Limit Reached (403). Try again later.", "fr": "⚠️ Limite GitHub atteinte (403). Réessayez plus tard." },
         "no_repo": { "en": "❌ No relevant repository found.", "fr": "❌ Aucun dépôt trouvé." },
         "available": { "en": "Available: ", "fr": "Disponible : " },
         "found": { "en": "Found: ", "fr": "Trouvé : " },
@@ -54,7 +53,6 @@ Item {
         "restart": { "en": "\nRestart recommended.", "fr": "\nRedémarrage recommandé." }
     }
 
-    // Fonction de traduction
     function tr(key) {
         if (translations[key]) {
             return translations[key][rootItem.currentLang] || translations[key]["en"];
@@ -85,6 +83,34 @@ Item {
     property string updatesResultText: tr("status_checking")
     property bool isCheckingUpdates: false
 
+    // AJOUT : Dictionnaire des dépôts connus pour éviter la recherche
+    property var knownRepositories: {
+        "qfield-filter-plugin": "woupss/qfield-filter-plugin",
+        "qfield-update-qgz-project": "woupss/qfield-update-qgz-project",
+        "qfield-plugin-update": "woupss/qfield-plugin-update",
+        "qfield-theme-position-color": "woupss/qfield-theme-position-color",
+        "qfield-pluginsbox": "woupss/qfield-pluginsbox",
+        "qfield-plugin-reloader": "gacarrillor/qfield-plugin-reloader",
+        "qfield-layer-loader": "mbernasocchi/qfield-layer-loader",
+        "DeleteViaDropdown": "TyHol/DeleteViaDropdown",
+        "qfield-osrm": "opengisch/qfield-osrm",
+        "qfield-nominatim-locator": "opengisch/qfield-nominatim-locator",
+        "FeelGood-UITweaker": "FeelGood-GeoSolutions/FeelGood-UITweaker",
+        "vocalpoint-qfield-plugin": "SeqLaz/vocalpoint-qfield-plugin",
+        "TrackedFeatureMarker": "danielseisenbacher/TrackedFeatureMarker",
+        "qfield-boxbox": "paul-carteron/qfield-boxbox",
+        "FeelGood-OneTapMeasurement": "FeelGood-GeoSolutions/FeelGood-OneTapMeasurement",
+        "qfield-snap": "opengisch/qfield-snap",
+        "qfield-image-based-feature-creation": "danielseisenbacher/qfield-image-based-feature-creation",
+        "qfield-ask-ai": "mbernasocchi/qfield-ask-ai",
+        "qfield-geomapfish-locator": "opengisch/qfield-geomapfish-locator",
+        "Qfield_Convert_Coords": "TyHol/Qfield_Convert_Coords",
+        "Qfield_search_Irish_UK_Grid": "TyHol/Qfield_search_Irish_UK_Grid",
+        "qfield-geometryless-addition": "opengisch/qfield-geometryless-addition",
+        "Qfield-Past-Geometry-Plugin": "qsavoye/Qfield-Past-Geometry-Plugin",
+        "qfield-weather-forecast": "opengisch/qfield-weather-forecast"
+    }
+
     // =========================================================================
     // 2. LOGIQUE METIER
     // =========================================================================
@@ -114,6 +140,9 @@ Item {
         rootItem.pluginsQueue = [];
         rootItem.updatesResultText = tr("status_scanning");
         rootItem.isCheckingUpdates = true;
+        
+        if (typeof pluginManager === "undefined" || !pluginManager.availableAppPlugins) return;
+
         var plugins = pluginManager.availableAppPlugins;
         for (var i = 0; i < plugins.length; i++) {
             rootItem.pluginsQueue.push({ name: plugins[i].name, version: plugins[i].version, uuid: plugins[i].uuid });
@@ -139,37 +168,76 @@ Item {
         }
     }
 
+    // AJOUT: Gestion des erreurs de limite API
+    function handleRateLimitError() {
+        updateQueueTimer.stop();
+        rootItem.isCheckingUpdates = false;
+        
+        var msg = "\n" + tr("ratelimit_error");
+        if (rootItem.updatesResultText.indexOf("403") === -1) {
+             rootItem.updatesResultText += msg;
+        }
+        statusText.text = "Error 403: API Limit";
+        statusText.color = "red";
+    }
+
+    // MODIFICATION: Logique intelligente utilisant knownRepositories
     function checkSinglePluginUpdate(pluginObj) {
+        // 1. Optimisation : Vérifier si le plugin est dans notre liste connue
+        var repoSlug = knownRepositories[pluginObj.uuid] || knownRepositories[pluginObj.name];
+        
+        if (repoSlug) {
+            var directUrl = "https://api.github.com/repos/" + repoSlug;
+            getLatestTag(directUrl, pluginObj);
+            return;
+        }
+
+        // 2. Si inconnu, on utilise l'API de recherche (plus coûteuse)
         var query = encodeURIComponent(pluginObj.name + " qfield");
         var apiUrl = "https://api.github.com/search/repositories?q=" + query + "&sort=stars&order=desc&per_page=1";
         var xhr = new XMLHttpRequest();
         xhr.onreadystatechange = function() {
-            if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
-                try {
-                    var response = JSON.parse(xhr.responseText);
-                    if (response.items && response.items.length > 0) getLatestTag(response.items[0].url, pluginObj);
-                } catch (e) {}
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                if (xhr.status === 200) {
+                    try {
+                        var response = JSON.parse(xhr.responseText);
+                        if (response.items && response.items.length > 0) getLatestTag(response.items[0].url, pluginObj);
+                    } catch (e) {}
+                } else if (xhr.status === 403) {
+                    handleRateLimitError();
+                }
             }
         }
-        xhr.open("GET", apiUrl); xhr.setRequestHeader("User-Agent", "QField-Plugin-Installer"); xhr.send();
+        xhr.open("GET", apiUrl); 
+        xhr.setRequestHeader("User-Agent", "QField-Plugin-Installer"); 
+        xhr.send();
     }
 
     function getLatestTag(repoUrl, pluginObj) {
         var xhr = new XMLHttpRequest();
         xhr.onreadystatechange = function() {
-            if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
-                try {
-                    var response = JSON.parse(xhr.responseText);
-                    var remoteVer = "";
-                    if (Array.isArray(response) && response.length > 0) remoteVer = response[0].name;
-                    else if (response.tag_name) remoteVer = response.tag_name;
-                    if (remoteVer !== "" && isNewerVersion(pluginObj.version, remoteVer)) {
-                        appendUpdateMessage(pluginObj.name, pluginObj.version, remoteVer);
-                    }
-                } catch (e) {}
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                if (xhr.status === 200) {
+                    try {
+                        var response = JSON.parse(xhr.responseText);
+                        var remoteVer = "";
+                        
+                        if (Array.isArray(response) && response.length > 0) remoteVer = response[0].name || response[0].tag_name;
+                        else if (response.tag_name) remoteVer = response.tag_name;
+                        else if (response.name) remoteVer = response.name;
+
+                        if (remoteVer !== "" && isNewerVersion(pluginObj.version, remoteVer)) {
+                            appendUpdateMessage(pluginObj.name, pluginObj.version, remoteVer);
+                        }
+                    } catch (e) {}
+                } else if (xhr.status === 403) {
+                    handleRateLimitError();
+                }
             }
         }
-        xhr.open("GET", repoUrl + "/releases/latest"); xhr.setRequestHeader("User-Agent", "QField-Plugin-Installer"); xhr.send();
+        xhr.open("GET", repoUrl + "/releases/latest"); 
+        xhr.setRequestHeader("User-Agent", "QField-Plugin-Installer"); 
+        xhr.send();
     }
 
     function appendUpdateMessage(name, oldVer, newVer) {
@@ -207,7 +275,12 @@ Item {
                             else tryNextSearchStep(step);
                         } else tryNextSearchStep(step);
                     } catch (e) { statusText.text = "❌ " + tr("json_error"); }
-                } else statusText.text = "❌ " + tr("api_error") + " (" + xhr.status + ")";
+                } else if (xhr.status === 403) {
+                     statusText.text = tr("ratelimit_error");
+                     statusText.color = "red";
+                } else {
+                     statusText.text = "❌ " + tr("api_error") + " (" + xhr.status + ")";
+                }
             }
         }
         xhr.open("GET", apiUrl); xhr.setRequestHeader("User-Agent", "QField-Plugin-Installer"); xhr.send();
@@ -253,6 +326,7 @@ Item {
         xhr.onreadystatechange = function() {
             if (xhr.readyState === XMLHttpRequest.DONE) {
                 if (xhr.status === 200) processSingleRelease(xhr.responseText, fallbackUrl, autoInstall);
+                else if (xhr.status === 403) { statusText.text = tr("ratelimit_error"); statusText.color = "red"; }
                 else checkGitHubAllReleases(repoSlug, fallbackUrl, autoInstall);
             }
         }
@@ -318,6 +392,7 @@ Item {
         else { statusText.text = msg; executeInstallation(fallbackUrl); }
     }
 
+    // MODIFICATION: Logique de pré-vérification pour utiliser knownRepositories
     function preCheckVersion() {
         rootItem.detectedVersion = ""; rootItem.preparedUrl = ""; rootItem.displayUrl = ""; statusText.text = "";
         var customUrl = urlField.text.trim();
@@ -329,7 +404,16 @@ Item {
             updateTargetDisplay(); return;
         }
 
-        if (pluginCombo.currentIndex !== -1) { startSmartSearch(); updateTargetDisplay(); }
+        if (pluginCombo.currentIndex !== -1) { 
+            // Vérification si le plugin est connu
+            var knownSlug = knownRepositories[rootItem.targetUuid] || knownRepositories[rootItem.targetName];
+            if (knownSlug) {
+                checkGitHubRelease(knownSlug, "", false);
+            } else {
+                startSmartSearch(); 
+            }
+            updateTargetDisplay(); 
+        }
     }
 
     function updateTargetDisplay() {
@@ -386,7 +470,7 @@ Item {
                 rootItem.isFinished = true; var successMsg = tr("installed");
                 if (rootItem.detectedVersion !== "") successMsg += " " + rootItem.detectedVersion;
                 
-                // Modification : Suppression du message de redémarrage ici
+                // Modification : Suppression du message de redémarrage ici (comme demandé par votre code cible)
                 statusText.text = successMsg;
                 
                 statusText.color = "green";
