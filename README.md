@@ -1,3 +1,6 @@
+IMPORTANT : THIS PLUGIN WILL NOT BE UPDATED IT IS REPLACED BY GITHUB-DOWNLOADER
+https://github.com/woupss/Github-Downloader
+
 With this plugin you can update your plugins from: 
 a selection list.
 or copy/paste an url from github release .zip to install a new plugin or update
